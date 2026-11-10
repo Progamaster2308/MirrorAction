@@ -78,5 +78,8 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
+    // Play Services Wearable (Sincronización DataClient con el reloj)
+    implementation(libs.play.services.wearable)
+
     debugImplementation(libs.androidx.ui.tooling)
 }

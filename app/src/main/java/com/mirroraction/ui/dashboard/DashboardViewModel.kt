@@ -22,11 +22,14 @@ data class DashboardUiState(
     val selectedTab: DashboardTab = DashboardTab.ALL
 )
 
+import com.mirroraction.sync.WearDataSyncHelper
+
 enum class DashboardTab { ALL, WATCHLIST }
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
-    private val repository: StockRepository
+    private val repository: StockRepository,
+    private val wearSyncHelper: WearDataSyncHelper
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -83,6 +86,11 @@ class DashboardViewModel @Inject constructor(
     fun toggleFavorite(stock: StockQuote) {
         viewModelScope.launch {
             repository.toggleFavorite(stock)
+            // Sincronizar hacia el reloj Wear OS a través de DataLayer
+            val currentFavorites = uiState.value.stocks.filter { 
+                if (it.symbol == stock.symbol) !stock.isFavorite else it.isFavorite 
+            }.map { it.symbol }
+            wearSyncHelper.syncFavoritesToWatch(currentFavorites)
         }
     }
 }

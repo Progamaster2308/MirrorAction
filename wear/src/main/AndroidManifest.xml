@@ -21,6 +21,26 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".sync.WearDataSyncService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:host="*"
+                    android:pathPrefix="/mirror_action"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".sync.WearSyncReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.mirroraction.SYNC_FAVORITES" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

@@ -21,6 +21,12 @@ interface FavoriteStockDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFavorite(stock: FavoriteStockEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(stocks: List<FavoriteStockEntity>)
+
     @Query("DELETE FROM favorite_stocks WHERE symbol = :symbol")
     suspend fun deleteFavoriteBySymbol(symbol: String)
+
+    @Query("DELETE FROM favorite_stocks")
+    suspend fun clearAll()
 }
