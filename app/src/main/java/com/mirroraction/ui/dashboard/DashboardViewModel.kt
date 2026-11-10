@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.mirroraction.sync.WearDataSyncHelper
 
 data class DashboardUiState(
     val stocks: List<StockQuote> = emptyList(),
@@ -21,8 +22,6 @@ data class DashboardUiState(
     val isLoading: Boolean = false,
     val selectedTab: DashboardTab = DashboardTab.ALL
 )
-
-import com.mirroraction.sync.WearDataSyncHelper
 
 enum class DashboardTab { ALL, WATCHLIST }
 
