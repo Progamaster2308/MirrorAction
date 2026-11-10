@@ -18,7 +18,7 @@ import {
   Globe,
   Sliders,
   Sparkles,
-} from 'lucide-react';
+} from 'lucide-react-native';
 import { SearchResult } from '../types/stock';
 import { searchSymbols } from '../api/stockService';
 import { getFavorites, toggleFavorite } from '../utils/storage';

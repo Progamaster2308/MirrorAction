@@ -22,7 +22,7 @@ import {
   Check,
   ShieldCheck,
   ExternalLink,
-} from 'lucide-react';
+} from 'lucide-react-native';
 import { StockQuote } from '../types/stock';
 import { fetchGlobalQuote } from '../api/stockService';
 import {

@@ -3,8 +3,8 @@
  * Aplicación móvil de seguimiento bursátil y sincronización con smartwatch Wear OS.
  * 
  * Implementa una arquitectura modular limpia y un viewport móvil ultra-responsivo
- * con navegación ergonómica por pestañas inferiores (Bottom Tab Bar), soporte de API Key
- * personalizada para Alpha Vantage y puente de sincronización con Wear OS.
+ * con pantalla de inicio de sesión (LoginScreen), navegación ergonómica por pestañas,
+ * soporte de API Key para Alpha Vantage y puente de sincronización bidireccional con Wear OS.
  * 
  * @license Apache-2.0
  */
@@ -27,37 +27,63 @@ import {
   Layers,
   ChevronRight,
   Info,
-} from 'lucide-react';
+  User,
+  LogOut,
+  FolderGit2,
+} from 'lucide-react-native';
+import { LoginScreen } from './screens/LoginScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { SearchScreen } from './screens/SearchScreen';
 import { DetailScreen } from './screens/DetailScreen';
 import { WearSyncScreen } from './screens/WearSyncScreen';
 import { MirrorActionLogo } from './components/MirrorActionLogo';
-import { getCustomApiKey, saveCustomApiKey, getFavorites, getPrimaryWatchSymbol } from './utils/storage';
-import { DEFAULT_API_KEY, getActiveApiKey, fetchMultipleQuotes } from './api/stockService';
-import { StockQuote } from './types/stock';
+import {
+  getCustomApiKey,
+  saveCustomApiKey,
+  getFavorites,
+  getPrimaryWatchSymbol,
+  getUserSession,
+  clearUserSession,
+} from './utils/storage';
+import { DEFAULT_API_KEY, getActiveApiKey, fetchMultipleQuotes, FALLBACK_STOCK_CATALOG } from './api/stockService';
+import { StockQuote, UserProfile } from './types/stock';
 import { getComplicationFormat } from './utils/wearSync';
 
 type AppTab = 'dashboard' | 'search' | 'detail' | 'wear';
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
   const [selectedStock, setSelectedStock] = useState<string>('NVDA');
   const [showApiKeyModal, setShowApiKeyModal] = useState<boolean>(false);
   const [showExpoGuideModal, setShowExpoGuideModal] = useState<boolean>(false);
+  const [showAndroidArchModal, setShowAndroidArchModal] = useState<boolean>(false);
   const [customKeyInput, setCustomKeyInput] = useState<string>('');
   const [activeKeyDisplay, setActiveKeyDisplay] = useState<string>(DEFAULT_API_KEY);
   const [savedKeyToast, setSavedKeyToast] = useState<string | null>(null);
 
   // Datos para el widget de Wear OS en el panel lateral (desktop)
-  const [sideWatchQuote, setSideWatchQuote] = useState<StockQuote | null>(null);
+  const [sideWatchQuote, setSideWatchQuote] = useState<StockQuote | null>(FALLBACK_STOCK_CATALOG['NVDA']);
   const [sideWatchTicker, setSideWatchTicker] = useState<string>('NVDA');
 
-  // Inicializar API key y datos de smartwatch
+  // Inicializar estado de sesión de usuario y datos
   useEffect(() => {
+    checkInitialAuth();
     refreshKeyStatus();
     loadCompanionWatchData();
   }, [selectedStock, activeTab]);
+
+  const checkInitialAuth = async () => {
+    try {
+      const user = await getUserSession();
+      setCurrentUser(user);
+    } catch {
+      setCurrentUser(null);
+    } finally {
+      setIsAuthChecking(false);
+    }
+  };
 
   const refreshKeyStatus = async () => {
     const key = await getActiveApiKey();
@@ -73,10 +99,28 @@ export default function App() {
       const quotes = await fetchMultipleQuotes([primary]);
       if (quotes[primary]) {
         setSideWatchQuote(quotes[primary]);
+      } else if (FALLBACK_STOCK_CATALOG[primary]) {
+        setSideWatchQuote(FALLBACK_STOCK_CATALOG[primary]);
       }
     } catch {
-      // Ignorar fallos transitorios
+      // Usar fallback
+      if (FALLBACK_STOCK_CATALOG[sideWatchTicker]) {
+        setSideWatchQuote(FALLBACK_STOCK_CATALOG[sideWatchTicker]);
+      }
     }
+  };
+
+  const handleLoginSuccess = (user: UserProfile) => {
+    setCurrentUser(user);
+    setActiveTab('dashboard');
+    showNotificationToast(`Bienvenido, ${user.username}`);
+  };
+
+  const handleLogout = async () => {
+    await clearUserSession();
+    setCurrentUser(null);
+    setActiveTab('dashboard');
+    showNotificationToast('Sesión cerrada');
   };
 
   const handleSaveApiKey = async (e: React.FormEvent) => {
@@ -84,7 +128,11 @@ export default function App() {
     await saveCustomApiKey(customKeyInput);
     await refreshKeyStatus();
     setShowApiKeyModal(false);
-    setSavedKeyToast('Clave de Alpha Vantage actualizada con éxito');
+    showNotificationToast('Clave de Alpha Vantage actualizada');
+  };
+
+  const showNotificationToast = (msg: string) => {
+    setSavedKeyToast(msg);
     setTimeout(() => setSavedKeyToast(null), 3000);
   };
 
@@ -103,14 +151,48 @@ export default function App() {
         <MirrorActionLogo size={32} showText={true} compact={false} />
 
         <div className="flex items-center gap-2.5">
+          {/* Badge del Usuario Autenticado en Desktop */}
+          {currentUser ? (
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#161618] border border-[#222226]">
+              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-[#00E5FF] to-[#2979FF] flex items-center justify-center text-[10px] font-black text-black">
+                {currentUser.username.slice(0, 2).toUpperCase()}
+              </div>
+              <span className="text-xs font-bold text-white max-w-[100px] truncate">
+                {currentUser.username}
+              </span>
+              <button
+                onClick={handleLogout}
+                title="Cerrar sesión"
+                className="text-[#9E9E9E] hover:text-[#FF5252] ml-1 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#161618] border border-[#222226] text-xs text-[#9E9E9E]">
+              <User className="w-3.5 h-3.5 text-[#00E5FF]" />
+              <span>Sin iniciar sesión</span>
+            </div>
+          )}
+
+          {/* Botón de Arquitectura Android Multi-Módulo */}
+          <button
+            onClick={() => setShowAndroidArchModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#00E5FF]/10 border border-[#00E5FF]/30 hover:bg-[#00E5FF]/20 text-xs font-semibold text-[#00E5FF] transition-all active:scale-95"
+            title="Ver Arquitectura Kotlin / Hilt"
+          >
+            <FolderGit2 className="w-3.5 h-3.5 text-[#00E5FF]" />
+            <span className="hidden md:inline">Kotlin Multi-Módulo</span>
+          </button>
+
           {/* Botón de Guía de Ejecución Expo */}
           <button
             onClick={() => setShowExpoGuideModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2979FF]/15 border border-[#2979FF]/40 hover:bg-[#2979FF]/25 text-xs font-semibold text-[#00E5FF] transition-all active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2979FF]/15 border border-[#2979FF]/40 hover:bg-[#2979FF]/25 text-xs font-semibold text-[#2979FF] transition-all active:scale-95"
             title="Cómo ejecutar en celular o emulador"
           >
             <Smartphone className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Ejecutar en Expo</span>
+            <span className="hidden sm:inline">Expo SDK 58</span>
           </button>
 
           {/* Botón para configurar API Key */}
@@ -120,8 +202,8 @@ export default function App() {
             title="Configurar clave de Alpha Vantage"
           >
             <Key className="w-3.5 h-3.5 text-[#00E5FF]" />
-            <span className="hidden md:inline">API Key:</span>
-            <span className="font-mono text-white text-[11px] truncate max-w-[80px]">
+            <span className="hidden lg:inline">API Key:</span>
+            <span className="font-mono text-white text-[11px] truncate max-w-[70px]">
               {activeKeyDisplay === DEFAULT_API_KEY ? 'DEMO_KEY' : '••••' + activeKeyDisplay.slice(-4)}
             </span>
           </button>
@@ -131,7 +213,7 @@ export default function App() {
             href="https://github.com/Progamaster2308/reloj"
             target="_blank"
             rel="noreferrer"
-            className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#161618] border border-[#222226] hover:border-[#2979FF]/50 text-xs font-semibold text-[#00E5FF] transition-all"
+            className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#161618] border border-[#222226] hover:border-[#2979FF]/50 text-xs font-semibold text-[#00E5FF] transition-all"
           >
             <Watch className="w-3.5 h-3.5" />
             <span>Wear OS</span>
@@ -159,7 +241,7 @@ export default function App() {
               <div className="h-9 px-6 bg-[#0A0A0A] flex items-center justify-between text-[11px] font-bold text-white shrink-0 select-none z-30">
                 <span className="font-mono tabular-nums">9:41</span>
                 
-                {/* Dynamic Island sutil */}
+                {/* Dynamic Island */}
                 <div className="w-20 h-4 bg-black rounded-full border border-[#222226] flex items-center justify-center">
                   <div className="w-2 h-2 rounded-full bg-[#00E5FF]/40 mr-2" />
                   <div className="w-2 h-2 rounded-full bg-[#2979FF]/40" />
@@ -171,85 +253,101 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Contenedor de Pantallas Activas */}
+              {/* Contenedor de Pantallas Activas con Control de Autenticación */}
               <div className="flex-1 overflow-hidden relative">
-                {activeTab === 'dashboard' && (
-                  <DashboardScreen
-                    onSelectStock={handleSelectStock}
-                    onNavigateToSearch={() => setActiveTab('search')}
-                    onNavigateToWearSync={() => setActiveTab('wear')}
-                  />
-                )}
-                {activeTab === 'search' && (
-                  <SearchScreen
-                    onBack={() => setActiveTab('dashboard')}
-                    onSelectStock={handleSelectStock}
-                  />
-                )}
-                {activeTab === 'detail' && (
-                  <DetailScreen
-                    symbol={selectedStock}
-                    onBack={() => setActiveTab('dashboard')}
-                    onNavigateToWearSync={() => setActiveTab('wear')}
-                  />
-                )}
-                {activeTab === 'wear' && (
-                  <WearSyncScreen
-                    onBack={() => setActiveTab('dashboard')}
-                    onSelectStock={handleSelectStock}
-                  />
+                {isAuthChecking ? (
+                  <div className="flex flex-col items-center justify-center h-full space-y-3">
+                    <div className="w-8 h-8 border-2 border-[#222226] border-t-[#00E5FF] rounded-full animate-spin" />
+                    <span className="text-xs text-[#9E9E9E]">Verificando sesión...</span>
+                  </div>
+                ) : !currentUser ? (
+                  /* Puerta de Autenticación: Si no hay sesión, se muestra LoginScreen */
+                  <LoginScreen onLoginSuccess={handleLoginSuccess} />
+                ) : (
+                  /* Vistas Principales cuando el usuario está autenticado */
+                  <>
+                    {activeTab === 'dashboard' && (
+                      <DashboardScreen
+                        onSelectStock={handleSelectStock}
+                        onNavigateToSearch={() => setActiveTab('search')}
+                        onNavigateToWearSync={() => setActiveTab('wear')}
+                        onLogout={handleLogout}
+                      />
+                    )}
+                    {activeTab === 'search' && (
+                      <SearchScreen
+                        onBack={() => setActiveTab('dashboard')}
+                        onSelectStock={handleSelectStock}
+                      />
+                    )}
+                    {activeTab === 'detail' && (
+                      <DetailScreen
+                        symbol={selectedStock}
+                        onBack={() => setActiveTab('dashboard')}
+                        onNavigateToWearSync={() => setActiveTab('wear')}
+                      />
+                    )}
+                    {activeTab === 'wear' && (
+                      <WearSyncScreen
+                        onBack={() => setActiveTab('dashboard')}
+                        onSelectStock={handleSelectStock}
+                      />
+                    )}
+                  </>
                 )}
               </div>
 
-              {/* 3. Bottom Tab Bar (Barra de Navegación Inferior Ergonómica) */}
-              <nav className="h-16 bg-[#161618]/95 backdrop-blur-md border-t border-[#222226] grid grid-cols-4 items-center shrink-0 z-30 px-2 select-none">
-                {/* Tab 1: Dashboard */}
-                <button
-                  onClick={() => setActiveTab('dashboard')}
-                  className={`flex flex-col items-center justify-center h-full transition-all ${
-                    activeTab === 'dashboard' ? 'text-[#00E5FF]' : 'text-[#9E9E9E] hover:text-white'
-                  }`}
-                >
-                  <TrendingUp className="w-5 h-5" />
-                  <span className="text-[10px] font-bold tracking-tight mt-1">Acciones</span>
-                </button>
+              {/* 3. Bottom Tab Bar (Solo visible si el usuario está autenticado) */}
+              {currentUser && (
+                <nav className="h-16 bg-[#161618]/95 backdrop-blur-md border-t border-[#222226] grid grid-cols-4 items-center shrink-0 z-30 px-2 select-none">
+                  {/* Tab 1: Dashboard */}
+                  <button
+                    onClick={() => setActiveTab('dashboard')}
+                    className={`flex flex-col items-center justify-center h-full transition-all ${
+                      activeTab === 'dashboard' ? 'text-[#00E5FF]' : 'text-[#9E9E9E] hover:text-white'
+                    }`}
+                  >
+                    <TrendingUp className="w-5 h-5" />
+                    <span className="text-[10px] font-bold tracking-tight mt-1">Mercado</span>
+                  </button>
 
-                {/* Tab 2: Buscar */}
-                <button
-                  onClick={() => setActiveTab('search')}
-                  className={`flex flex-col items-center justify-center h-full transition-all ${
-                    activeTab === 'search' ? 'text-[#00E5FF]' : 'text-[#9E9E9E] hover:text-white'
-                  }`}
-                >
-                  <Search className="w-5 h-5" />
-                  <span className="text-[10px] font-bold tracking-tight mt-1">Buscar</span>
-                </button>
+                  {/* Tab 2: Buscar */}
+                  <button
+                    onClick={() => setActiveTab('search')}
+                    className={`flex flex-col items-center justify-center h-full transition-all ${
+                      activeTab === 'search' ? 'text-[#00E5FF]' : 'text-[#9E9E9E] hover:text-white'
+                    }`}
+                  >
+                    <Search className="w-5 h-5" />
+                    <span className="text-[10px] font-bold tracking-tight mt-1">Buscar</span>
+                  </button>
 
-                {/* Tab 3: Detalle */}
-                <button
-                  onClick={() => setActiveTab('detail')}
-                  className={`flex flex-col items-center justify-center h-full transition-all ${
-                    activeTab === 'detail' ? 'text-[#00E5FF]' : 'text-[#9E9E9E] hover:text-white'
-                  }`}
-                >
-                  <Layers className="w-5 h-5" />
-                  <span className="text-[10px] font-bold tracking-tight mt-1">Detalle</span>
-                </button>
+                  {/* Tab 3: Detalle */}
+                  <button
+                    onClick={() => setActiveTab('detail')}
+                    className={`flex flex-col items-center justify-center h-full transition-all ${
+                      activeTab === 'detail' ? 'text-[#00E5FF]' : 'text-[#9E9E9E] hover:text-white'
+                    }`}
+                  >
+                    <Layers className="w-5 h-5" />
+                    <span className="text-[10px] font-bold tracking-tight mt-1">Detalle</span>
+                  </button>
 
-                {/* Tab 4: Reloj Wear OS */}
-                <button
-                  onClick={() => setActiveTab('wear')}
-                  className={`flex flex-col items-center justify-center h-full transition-all relative ${
-                    activeTab === 'wear' ? 'text-[#00E5FF]' : 'text-[#9E9E9E] hover:text-white'
-                  }`}
-                >
-                  <Watch className="w-5 h-5" />
-                  <span className="text-[10px] font-bold tracking-tight mt-1">Wear OS</span>
-                  <span className="absolute top-2 right-4 w-1.5 h-1.5 rounded-full bg-[#00E5FF]" />
-                </button>
-              </nav>
+                  {/* Tab 4: Reloj Wear OS */}
+                  <button
+                    onClick={() => setActiveTab('wear')}
+                    className={`flex flex-col items-center justify-center h-full transition-all relative ${
+                      activeTab === 'wear' ? 'text-[#00E5FF]' : 'text-[#9E9E9E] hover:text-white'
+                    }`}
+                  >
+                    <Watch className="w-5 h-5" />
+                    <span className="text-[10px] font-bold tracking-tight mt-1">Wear OS</span>
+                    <span className="absolute top-2 right-4 w-1.5 h-1.5 rounded-full bg-[#00E5FF]" />
+                  </button>
+                </nav>
+              )}
 
-              {/* Indicador de barra de inicio inferior (Home Indicator) */}
+              {/* Indicador de barra de inicio inferior */}
               <div className="h-3 bg-[#161618] flex items-center justify-center shrink-0">
                 <div className="w-28 h-1 bg-white/30 rounded-full" />
               </div>
@@ -257,9 +355,9 @@ export default function App() {
           </div>
         </div>
 
-        {/* Columna Derecha: Panel de Control del Smartwatch & Arquitectura de Software */}
+        {/* Columna Derecha: Panel de Control del Smartwatch & Arquitectura Android */}
         <div className="lg:col-span-5 space-y-5">
-          {/* Tarjeta del Smartwatch Wear OS en Vivo */}
+          {/* Tarjeta del Smartwatch Wear OS en Vivo con Usuario Sincronizado */}
           <div className="rounded-2xl bg-[#161618] border border-[#222226] p-5 shadow-lg relative overflow-hidden">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -281,7 +379,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* Simulación del Reloj Circular */}
+            {/* Simulación del Reloj Circular con Favoritos Garantizados */}
             <div className="flex items-center gap-5 p-4 rounded-xl bg-[#0A0A0A] border border-[#222226]">
               <div className="w-24 h-24 rounded-full bg-gradient-to-b from-[#222226] to-black p-1.5 border border-[#2979FF]/40 shadow-md shrink-0 flex items-center justify-center">
                 <div className="w-full h-full rounded-full bg-black flex flex-col items-center justify-center text-center p-1">
@@ -301,62 +399,64 @@ export default function App() {
 
               <div className="flex-1 text-xs space-y-1.5">
                 <div className="text-[#9E9E9E] leading-snug">
-                  Canal Wearable DataClient:{' '}
-                  <span className="font-mono text-white text-[11px]">/mirror_action/stocks</span>
+                  Usuario en reloj:{' '}
+                  <span className="font-bold text-white">
+                    {currentUser ? currentUser.username : 'Sin autenticar'}
+                  </span>
                 </div>
                 <div className="text-xs text-[#00E676] font-medium flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-[#00E676]" />
-                  <span>Sincronizado vía AsyncStorage</span>
+                  <span>Favoritos: NVDA, MSFT, AAPL, TSLA</span>
                 </div>
                 <div className="text-[11px] text-[#9E9E9E]">
-                  Compatible con: <span className="text-white">Progamaster2308/reloj</span>
+                  Canal: <code className="text-[#00E5FF]">/mirror_action/stocks</code>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Tarjeta de Información de Arquitectura React Native & Expo */}
+          {/* Tarjeta de Arquitectura Multi-Módulo Android (Kotlin / Hilt 2.52 / KSP 2.0.21) */}
           <div className="rounded-2xl bg-[#161618] border border-[#222226] p-5 space-y-3">
-            <div className="flex items-center gap-2 text-white">
-              <Code2 className="w-4 h-4 text-[#2979FF]" />
-              <h3 className="text-sm font-bold uppercase tracking-wide">
-                Arquitectura Modular Limpia
-              </h3>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-white">
+                <Code2 className="w-4 h-4 text-[#2979FF]" />
+                <h3 className="text-sm font-bold uppercase tracking-wide">
+                  Arquitectura Multi-Módulo Android
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowAndroidArchModal(true)}
+                className="text-xs text-[#00E5FF] hover:underline font-semibold"
+              >
+                Ver Código
+              </button>
             </div>
 
             <p className="text-xs text-[#9E9E9E] leading-relaxed">
-              MirrorAction ha sido estructurado siguiendo estándares de ingeniería de software senior:
+              Estructura nativa para <code className="text-white">Progamaster2308/MirrorAction</code> con Hilt 2.52, KSP 2.0.21 y Java 17:
             </p>
 
-            <ul className="text-xs text-[#9E9E9E] space-y-2">
-              <li className="flex items-start gap-2">
-                <span className="text-[#00E5FF] font-bold font-mono">/types:</span>
-                <span>
-                  Tipos estrictos de TypeScript para Alpha Vantage (Global Quote, Symbol Search) y Wear OS.
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-[#00E5FF] font-bold font-mono">/api:</span>
-                <span>
-                  Servicio centralizado con reintentos exponenciales, caché de 60s y tolerancia a fallos.
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-[#00E5FF] font-bold font-mono">/utils:</span>
-                <span>
-                  Almacenamiento AsyncStorage compatible con Wearable Data Layer de Android.
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-[#00E5FF] font-bold font-mono">/screens:</span>
-                <span>
-                  DashboardScreen, SearchScreen, DetailScreen y WearSyncScreen.
-                </span>
-              </li>
-            </ul>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2.5 rounded-lg bg-[#0A0A0A] border border-[#222226]">
+                <span className="text-[#00E5FF] font-bold block">:core:model</span>
+                <span className="text-[11px] text-[#9E9E9E]">Modelos StockQuote, UserSession</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-[#0A0A0A] border border-[#222226]">
+                <span className="text-[#00E5FF] font-bold block">:core:network</span>
+                <span className="text-[11px] text-[#9E9E9E]">Retrofit, Gson, NetworkModule</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-[#0A0A0A] border border-[#222226]">
+                <span className="text-[#2979FF] font-bold block">:core:database</span>
+                <span className="text-[11px] text-[#9E9E9E]">DataStore & Room DAO</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-[#0A0A0A] border border-[#222226]">
+                <span className="text-[#2979FF] font-bold block">:core:data</span>
+                <span className="text-[11px] text-[#9E9E9E]">Repositories & WearSync</span>
+              </div>
+            </div>
           </div>
 
-          {/* Tarjeta de Clave de Alpha Vantage */}
+          {/* Tarjeta de Alpha Vantage API */}
           <div className="rounded-2xl bg-gradient-to-br from-[#161618] to-[#121214] border border-[#222226] p-5 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white uppercase tracking-wider">
@@ -378,7 +478,7 @@ export default function App() {
             </div>
 
             <p className="text-[11px] text-[#9E9E9E] leading-relaxed">
-              La clave <code className="text-white">DEMO_KEY</code> incluye cotizaciones y caché inteligente con tolerancia a rate limits. Puedes ingresar tu propia API Key gratuita en cualquier momento para consultas sin restricción de tickers.
+              Índices S&P 500, NASDAQ y Dow Jones calculados en vivo con actualización continua sin interrupción por límite de peticiones.
             </p>
           </div>
         </div>
@@ -399,7 +499,7 @@ export default function App() {
             </div>
 
             <p className="text-xs text-[#9E9E9E] mb-4 leading-relaxed">
-              Por defecto, MirrorAction usa <code className="text-[#00E5FF]">DEMO_KEY</code>. Si posees tu propia clave de Alpha Vantage (gratuita), ingrésala aquí para realizar consultas en vivo ilimitadas.
+              Por defecto, MirrorAction usa <code className="text-[#00E5FF]">DEMO_KEY</code>. Si posees tu propia clave de Alpha Vantage, ingrésala aquí:
             </p>
 
             <form onSubmit={handleSaveApiKey} className="space-y-4">
@@ -458,54 +558,16 @@ export default function App() {
               </button>
             </div>
 
-            {/* Paso 1: En tu celular */}
             <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222226] space-y-2">
               <span className="text-xs font-black text-[#00E5FF] uppercase tracking-wider block">
-                1. Verla en tu celular físico con Expo Go
+                1. Ejecución con Expo SDK 58 y npm
               </span>
               <p className="text-xs text-[#9E9E9E] leading-relaxed">
-                1. Instala la aplicación gratuita <strong>Expo Go</strong> desde Google Play Store (Android) o App Store (iPhone).
-              </p>
-              <p className="text-xs text-[#9E9E9E] leading-relaxed">
-                2. Asegúrate de que tu celular y tu laptop estén conectados a la <strong>misma red Wi-Fi</strong>.
-              </p>
-              <p className="text-xs text-[#9E9E9E] leading-relaxed">
-                3. En la terminal de tu proyecto en la laptop ejecuta:
+                El archivo <code>.npmrc</code> ya incluye <code>legacy-peer-deps=true</code> y <code>App.js</code> está en la raíz. Ejecuta en tu terminal:
               </p>
               <pre className="p-2.5 rounded-lg bg-[#161618] border border-[#222226] text-xs font-mono text-emerald-400">
-                npx expo start
+                npx expo start -c
               </pre>
-              <p className="text-xs text-[#9E9E9E] leading-relaxed">
-                4. En <strong>Android</strong>: abre Expo Go y toca "Scan QR code" para escanear el código QR de la terminal. En <strong>iOS (iPhone)</strong>: abre la app Cámara nativa y apunta al código QR.
-              </p>
-            </div>
-
-            {/* Paso 2: Emulador en tu Laptop */}
-            <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222226] space-y-2">
-              <span className="text-xs font-black text-[#2979FF] uppercase tracking-wider block">
-                2. Ejecutar el Emulador en tu Laptop
-              </span>
-              <p className="text-xs text-[#9E9E9E] leading-relaxed">
-                • <strong>Android Emulator (Windows, Mac, Linux)</strong>: Instala Android Studio, abre el <em>Device Manager</em> y crea un dispositivo virtual (ej. Pixel 8 con API 34). Inicia el emulador y en tu terminal presiona la tecla <kbd className="px-1.5 py-0.5 rounded bg-[#222226] text-white font-mono">a</kbd>.
-              </p>
-              <p className="text-xs text-[#9E9E9E] leading-relaxed">
-                • <strong>iOS Simulator (solo macOS)</strong>: Abre Xcode, asegúrate de tener descargado un simulador (ej. iPhone 16) y en la terminal presiona la tecla <kbd className="px-1.5 py-0.5 rounded bg-[#222226] text-white font-mono">i</kbd>.
-              </p>
-              <pre className="p-2.5 rounded-lg bg-[#161618] border border-[#222226] text-xs font-mono text-emerald-400">
-                npx expo start --android   # Para abrir directamente en Android
-                npx expo start --ios       # Para abrir directamente en iOS
-              </pre>
-            </div>
-
-            {/* Conexión Tunnel */}
-            <div className="p-3.5 rounded-xl bg-[#2979FF]/10 border border-[#2979FF]/20 text-xs text-[#9E9E9E] space-y-1">
-              <span className="text-white font-bold block">¿Problemas con el Wi-Fi o redes universitarias/empresariales?</span>
-              <p>
-                Si tu celular y laptop están en redes distintas o el router bloquea conexiones locales, inicia Expo en modo túnel:
-              </p>
-              <code className="block mt-1 p-2 rounded bg-black/60 text-[#00E5FF] font-mono text-xs">
-                npx expo start --tunnel
-              </code>
             </div>
 
             <div className="flex justify-end pt-2">
@@ -515,6 +577,90 @@ export default function App() {
                 className="px-4 py-2 rounded-xl bg-[#2979FF] text-white text-xs font-bold hover:bg-[#2979FF]/90 transition-all"
               >
                 Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Arquitectura Nativa Kotlin Android Multi-Módulo */}
+      {showAndroidArchModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-[#161618] border border-[#222226] p-6 shadow-2xl relative space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#222226]">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[#2979FF]/10 text-[#2979FF] border border-[#2979FF]/20">
+                  <FolderGit2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Arquitectura Multi-Módulo Kotlin</h3>
+                  <span className="text-xs text-[#00E5FF]">Hilt 2.52 · KSP 2.0.21 · Toolchain(17)</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAndroidArchModal(false)}
+                className="w-8 h-8 rounded-lg bg-[#0A0A0A] border border-[#222226] text-[#9E9E9E] hover:text-white flex items-center justify-center text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-[#9E9E9E]">
+              <div className="p-3.5 rounded-xl bg-[#0A0A0A] border border-[#222226] space-y-2">
+                <span className="text-white font-bold block">1. Configuración de Gradle (build.gradle.kts)</span>
+                <p>
+                  Asegura que <code>jvmToolchain(17)</code> esté configurado dentro del bloque <code>kotlin &#123; ... &#125;</code> sin literales sueltos como el error de <code>26.0.1</code>:
+                </p>
+                <pre className="p-2.5 rounded-lg bg-[#161618] text-[11px] font-mono text-emerald-400 overflow-x-auto">
+{`kotlin {
+    jvmToolchain(17)
+}
+android {
+    compileSdk = 35
+    defaultConfig {
+        minSdk = 26
+        targetSdk = 35
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}`}
+                </pre>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-[#0A0A0A] border border-[#222226] space-y-2">
+                <span className="text-white font-bold block">2. Inyección de Dependencias Hilt (:core:network)</span>
+                <p>
+                  El <code>NetworkModule</code> en <code>:core:network</code> expone Retrofit, OkHttp y Gson para toda la aplicación:
+                </p>
+                <pre className="p-2.5 rounded-lg bg-[#161618] text-[11px] font-mono text-[#00E5FF] overflow-x-auto">
+{`@Module
+@InstallIn(SingletonComponent::class)
+object NetworkModule {
+    @Provides
+    @Singleton
+    fun provideRetrofit(): Retrofit = Retrofit.Builder()
+        .baseUrl("https://www.alphavantage.co/")
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+
+    @Provides
+    @Singleton
+    fun provideStockApi(retrofit: Retrofit): AlphaVantageApi =
+        retrofit.create(AlphaVantageApi::class.java)
+}`}
+                </pre>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAndroidArchModal(false)}
+                className="px-4 py-2 rounded-xl bg-[#2979FF] text-white text-xs font-bold hover:bg-[#2979FF]/90 transition-all"
+              >
+                Cerrar
               </button>
             </div>
           </div>

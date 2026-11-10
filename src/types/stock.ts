@@ -1,10 +1,37 @@
 /**
  * MirrorAction - Type Definitions
  * Tipos estrictos de TypeScript para cotizaciones bursátiles,
- * respuestas de Alpha Vantage y sincronización con Wear OS.
+ * índices de mercado, autenticación de usuario y sincronización bidireccional con Wear OS.
  * 
  * @license Apache-2.0
  */
+
+/**
+ * Perfil de usuario y sesión activa de autenticación
+ */
+export interface UserProfile {
+  username: string;
+  email: string;
+  avatarUrl?: string;
+  token?: string;
+  loggedInAt: number;
+  preferredCurrency?: string;
+  bio?: string;
+}
+
+/**
+ * Índice de Mercado Principal (ej. S&P 500, NASDAQ, Dow Jones)
+ */
+export interface MarketIndex {
+  symbol: string;
+  name: string;
+  value: number;
+  change: number;
+  changePercent: number;
+  isPositive: boolean;
+  high52Week?: number;
+  low52Week?: number;
+}
 
 /**
  * Respuesta cruda devuelta por el endpoint GLOBAL_QUOTE de Alpha Vantage
@@ -62,7 +89,7 @@ export interface SymbolSearchResponse {
  */
 export interface StockQuote {
   symbol: string;
-  name?: string;
+  name: string;
   price: number;
   change: number;
   changePercent: number;
@@ -74,9 +101,9 @@ export interface StockQuote {
   latestTradingDay: string;
   lastUpdatedTimestamp: number;
   isPositive: boolean;
-  marketCapEstimate?: string;
-  peRatioEstimate?: number;
-  dayRangePercentage?: number; // posición relativa del precio actual entre min y max (0 - 100)
+  marketCapEstimate: string;
+  peRatioEstimate: number;
+  dayRangePercentage: number; // posición relativa del precio actual entre min y max (0 - 100)
 }
 
 /**
@@ -93,30 +120,42 @@ export interface SearchResult {
 }
 
 /**
- * Estructura de sincronización de datos con el reloj inteligente Wear OS
- * Compatible con el repositorio: https://github.com/Progamaster2308/reloj
- * y con la API Wearable DataClient de Android / Tizen / Wear OS Tiles.
+ * Elemento de acción sincronizado con el smartwatch Wear OS
  */
 export interface WearOSStockItem {
   symbol: string;
+  name: string;
   price: string;
   changePercent: string;
   isPositive: boolean;
   timestamp: number;
 }
 
+/**
+ * Estructura de sincronización bidireccional con el reloj inteligente Wear OS
+ * Compatible con el repositorio: https://github.com/Progamaster2308/reloj
+ * y con la API Wearable DataClient de Android / Jetpack Compose for Wear OS.
+ */
 export interface WearOSSyncPayload {
   version: string;
-  protocol: 'MIRROR_ACTION_WEAR_V1';
+  protocol: 'MIRROR_ACTION_WEAR_V2';
   exportedAt: string;
   deviceId: string;
+  user: {
+    username: string;
+    email: string;
+    isAuthenticated: boolean;
+    sessionTimestamp: number;
+  };
   primaryWatchSymbol: string;
   favorites: string[];
   stocks: WearOSStockItem[];
+  indices: MarketIndex[];
   metadata: {
     appVersion: string;
     totalTracked: number;
     syncPath: string; // p. ej. "/mirror_action/stocks"
+    lastSyncStatus: 'SYNCED' | 'PENDING' | 'OFFLINE';
   };
 }
 

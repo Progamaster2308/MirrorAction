@@ -3,8 +3,8 @@
  * Pantalla dedicada a la gestión del enlace con el smartwatch Wear OS
  * (Repositorio de referencia: https://github.com/Progamaster2308/reloj).
  * 
- * Permite visualizar el Tile / Complicación en un simulador circular en vivo,
- * seleccionar el ticker prioritario, inspeccionar el paquete JSON estandarizado
+ * Permite visualizar el Tile / Complicación en un simulador circular en vivo con el
+ * usuario autenticado, inspeccionar el paquete JSON estandarizado V2
  * y exportarlo directamente para depuración por ADB o DataClient.
  * 
  * @license Apache-2.0
@@ -25,14 +25,17 @@ import {
   FileCode,
   Smartphone,
   ExternalLink,
-} from 'lucide-react';
-import { StockQuote, WearOSSyncPayload } from '../types/stock';
-import { fetchMultipleQuotes } from '../api/stockService';
+  User,
+  ShieldCheck,
+} from 'lucide-react-native';
+import { StockQuote, WearOSSyncPayload, UserProfile } from '../types/stock';
+import { fetchMultipleQuotes, FALLBACK_STOCK_CATALOG } from '../api/stockService';
 import {
   getFavorites,
   getPrimaryWatchSymbol,
   setPrimaryWatchSymbol,
   buildWearOSSyncPacket,
+  getUserSession,
 } from '../utils/storage';
 import {
   WEAR_DATA_LAYER_PATHS,
@@ -46,9 +49,10 @@ interface WearSyncScreenProps {
 }
 
 export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelectStock }) => {
-  const [favorites, setFavorites] = useState<string[]>([]);
+  const [favorites, setFavorites] = useState<string[]>(['NVDA', 'MSFT', 'AAPL', 'TSLA']);
   const [primarySymbol, setPrimarySymbol] = useState<string>('NVDA');
-  const [quotes, setQuotes] = useState<Record<string, StockQuote>>({});
+  const [quotes, setQuotes] = useState<Record<string, StockQuote>>(FALLBACK_STOCK_CATALOG);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [jsonPayload, setJsonPayload] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -60,18 +64,22 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
   }, []);
 
   const loadData = async () => {
-    const favs = await getFavorites();
-    const primary = await getPrimaryWatchSymbol();
+    const [favs, primary, user] = await Promise.all([
+      getFavorites(),
+      getPrimaryWatchSymbol(),
+      getUserSession(),
+    ]);
+
     setFavorites(favs);
     setPrimarySymbol(primary);
+    setCurrentUser(user);
 
-    if (favs.length > 0) {
-      const fetchedQuotes = await fetchMultipleQuotes(favs);
-      setQuotes(fetchedQuotes);
+    const fetchedQuotes = await fetchMultipleQuotes(favs);
+    const merged = { ...FALLBACK_STOCK_CATALOG, ...fetchedQuotes };
+    setQuotes(merged);
 
-      const packet: WearOSSyncPayload = await buildWearOSSyncPacket(fetchedQuotes);
-      setJsonPayload(JSON.stringify(packet, null, 2));
-    }
+    const packet: WearOSSyncPayload = await buildWearOSSyncPacket(merged);
+    setJsonPayload(JSON.stringify(packet, null, 2));
   };
 
   const handleSelectPrimary = async (symbol: string) => {
@@ -102,8 +110,8 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
     setIsSyncing(true);
     setTimeout(() => {
       setIsSyncing(false);
-      showToast('¡Paquete transmitido a Wearable Data Layer!');
-    }, 900);
+      showToast('¡Datos sincronizados con Wear OS DataClient!');
+    }, 700);
   };
 
   const showToast = (msg: string) => {
@@ -113,7 +121,7 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
     }, 2500);
   };
 
-  const primaryQuote = quotes[primarySymbol];
+  const primaryQuote = quotes[primarySymbol] || FALLBACK_STOCK_CATALOG[primarySymbol];
   const complication = getComplicationFormat(primaryQuote);
   const isPos = primaryQuote ? primaryQuote.isPositive : true;
 
@@ -124,7 +132,7 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="flex items-center justify-center w-9 h-9 rounded-xl bg-[#161618] border border-[#222226] text-white hover:text-[#00E5FF] hover:border-[#00E5FF]/40 active:scale-95 transition-all"
+            className="flex items-center justify-center w-8 h-8 rounded-xl bg-[#161618] border border-[#222226] text-white hover:text-[#00E5FF] hover:border-[#00E5FF]/40 active:scale-95 transition-all"
             aria-label="Volver"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -134,7 +142,7 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
               Wear OS Companion
             </h1>
             <span className="text-[11px] text-[#00E5FF] font-medium">
-              Sincronización con Smartwatch
+              Sincronización Bidireccional
             </span>
           </div>
         </div>
@@ -145,7 +153,7 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2979FF] hover:bg-[#2979FF]/90 text-white text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
         >
           <Send className={`w-3.5 h-3.5 ${isSyncing ? 'animate-pulse' : ''}`} />
-          <span>{isSyncing ? 'Enviando...' : 'Sincronizar'}</span>
+          <span>{isSyncing ? 'Sincronizando...' : 'Transmitir'}</span>
         </button>
       </header>
 
@@ -159,7 +167,36 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
 
       {/* 2. Cuerpo Principal */}
       <div className="flex-1 px-4 py-4 space-y-5 pb-24">
-        {/* Simulador Circular de Carátula Wear OS */}
+        {/* Banner de Estado de Usuario Autenticado en el Reloj */}
+        <div className="rounded-xl bg-[#161618] border border-[#222226] p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#00E5FF] to-[#2979FF] flex items-center justify-center text-xs font-bold text-black">
+              {currentUser ? currentUser.username.slice(0, 2).toUpperCase() : 'TR'}
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-white">
+                  {currentUser ? currentUser.username : 'Trader Autenticado'}
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00E676]" />
+              </div>
+              <span className="text-[11px] text-[#9E9E9E]">
+                {currentUser ? currentUser.email : 'usuario@mirroraction.app'}
+              </span>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <span className="text-[10px] text-[#00E676] font-semibold bg-[#00E676]/10 px-2 py-0.5 rounded block">
+              Enlace Activo
+            </span>
+            <span className="text-[10px] text-[#9E9E9E] mt-0.5 block">
+              {favorites.length} Tickers en Reloj
+            </span>
+          </div>
+        </div>
+
+        {/* Simulador Circular de Carátula Wear OS con Favoritos Activos */}
         <div className="flex flex-col items-center justify-center py-2">
           <span className="text-[11px] text-[#9E9E9E] uppercase tracking-wider mb-2 font-medium">
             Vista Previa de Carátula (Tile / Watchface)
@@ -169,7 +206,6 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
           <div className="relative w-48 h-48 rounded-full bg-gradient-to-b from-[#222226] to-[#0A0A0A] p-2 shadow-2xl shadow-black/80 border-2 border-[#2979FF]/40 flex items-center justify-center">
             {/* Pantalla OLED Circular */}
             <div className="w-full h-full rounded-full bg-black flex flex-col items-center justify-center p-3 text-center relative overflow-hidden">
-              {/* Resplandor sutil en la corona del reloj */}
               <div
                 className="absolute inset-0 opacity-15 pointer-events-none"
                 style={{
@@ -179,10 +215,12 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
                 }}
               />
 
-              {/* Hora simulada en el reloj */}
-              <span className="text-[10px] text-[#9E9E9E] font-mono tracking-widest tabular-nums mb-1">
-                10:09 AM
-              </span>
+              {/* Hora y Usuario en el Reloj */}
+              <div className="flex items-center gap-1 text-[9px] text-[#9E9E9E] font-mono tracking-wider tabular-nums mb-1">
+                <span>10:09 AM</span>
+                <span>·</span>
+                <span className="text-[#00E5FF]">{currentUser?.username || 'Trader'}</span>
+              </div>
 
               {/* Ticker Activo */}
               <div className="flex items-center gap-1">
@@ -210,9 +248,10 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
                 <span>{complication.percentValue}</span>
               </div>
 
-              {/* Indicador de favoritos en el reloj */}
-              <div className="mt-1 text-[9px] text-[#9E9E9E] tracking-tighter">
-                {favorites.length} tickers en memoria
+              {/* Indicador de Favoritos Poblados */}
+              <div className="mt-1 flex items-center gap-1 text-[9px] text-[#00E5FF]">
+                <span>✓</span>
+                <span className="font-semibold">{favorites.join(' · ')}</span>
               </div>
             </div>
           </div>
@@ -247,11 +286,11 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
           </div>
         </div>
 
-        {/* Selector de Pestañas de Integración con el Repo Reloj */}
+        {/* Pestañas de Inspección y Guía de Arquitectura */}
         <div className="rounded-xl bg-[#161618] border border-[#222226] p-3.5 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-white uppercase tracking-wider">
-              Enlace con Repo Reloj
+              Sincronización con Wear OS
             </span>
             <div className="flex items-center gap-1 bg-[#0A0A0A] p-0.5 rounded-lg border border-[#222226]">
               <button
@@ -260,7 +299,7 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
                   guideTab === 'json' ? 'bg-[#2979FF] text-white' : 'text-[#9E9E9E] hover:text-white'
                 }`}
               >
-                Esquema JSON
+                Payload V2
               </button>
               <button
                 onClick={() => setGuideTab('android_studio')}
@@ -270,7 +309,7 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
                     : 'text-[#9E9E9E] hover:text-white'
                 }`}
               >
-                Android Studio
+                Multi-Módulo
               </button>
               <button
                 onClick={() => setGuideTab('adb')}
@@ -278,12 +317,12 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
                   guideTab === 'adb' ? 'bg-[#2979FF] text-white' : 'text-[#9E9E9E] hover:text-white'
                 }`}
               >
-                Comandos ADB
+                DataLayer
               </button>
             </div>
           </div>
 
-          {/* Vista 1: JSON */}
+          {/* Vista 1: JSON V2 con Usuario y Favoritos */}
           {guideTab === 'json' && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -313,67 +352,36 @@ export const WearSyncScreen: React.FC<WearSyncScreenProps> = ({ onBack, onSelect
             </div>
           )}
 
-          {/* Vista 2: Cómo abrir y compilar el repo en Android Studio */}
+          {/* Vista 2: Multi-Módulo Android (:app, :core:model, :core:network, etc.) */}
           {guideTab === 'android_studio' && (
             <div className="space-y-2 text-xs text-[#9E9E9E] leading-relaxed">
               <p className="text-white font-semibold">
-                El repositorio <code className="text-[#00E5FF]">Progamaster2308/reloj</code> es una app nativa de Wear OS (Kotlin/Java). Se ejecuta en Android Studio:
+                Estructura de MirrorAction en Android Studio (Kotlin, Hilt 2.52, KSP 2.0.21, Toolchain 17):
               </p>
-              <ol className="list-decimal list-inside space-y-1 pl-1">
-                <li>Clona el repo: <code className="text-emerald-400 font-mono text-[11px]">git clone https://github.com/Progamaster2308/reloj.git</code></li>
-                <li>Abre la carpeta en <strong>Android Studio</strong> (*File &gt; Open*).</li>
-                <li>En <strong>Device Manager</strong>, haz clic en <em>Create Device &gt; Wear OS &gt; Wear OS Large Round</em>.</li>
-                <li>Descarga la imagen del sistema <strong>Wear OS 4 (API 33)</strong> o superior y dale a <em>Finish</em>.</li>
-                <li>Presiona el botón de <strong>Run ▶ (Shift + F10)</strong> para compilar e instalar la app directamente en el emulador del reloj.</li>
-              </ol>
+              <ul className="space-y-1 pl-1">
+                <li>• <strong className="text-white">:core:model</strong>: Modelos de datos compartidos (`UserSession`, `StockQuote`, `MarketIndex`).</li>
+                <li>• <strong className="text-white">:core:network</strong>: `AlphaVantageApi`, `NetworkModule` con Retrofit y OkHttp inyectados vía Hilt.</li>
+                <li>• <strong className="text-white">:core:database</strong>: `UserPreferencesDataStore` y Room Database para persistencia local segura.</li>
+                <li>• <strong className="text-white">:core:data</strong>: `StockRepository` y `AuthRepository` con sincronización a Wear OS.</li>
+                <li>• <strong className="text-white">:app</strong>: Jetpack Compose con `LoginScreen` y `DashboardScreen`.</li>
+              </ul>
             </div>
           )}
 
-          {/* Vista 3: Vinculación Móvil - Reloj por ADB */}
+          {/* Vista 3: Vinculación DataLayer con el repositorio reloj */}
           {guideTab === 'adb' && (
             <div className="space-y-2 text-xs text-[#9E9E9E] leading-relaxed">
               <span className="text-white font-semibold block">
-                Emparejar el Emulador del Teléfono con el Emulador del Reloj:
+                Recepción en el Smartwatch (`https://github.com/Progamaster2308/reloj`):
               </span>
-              <p>Para que la app de Expo y el reloj se comuniquen en tu laptop:</p>
+              <p>
+                El smartwatch implementa un <code className="text-[#00E5FF]">WearableListenerService</code> que escucha en <code className="text-white">/mirror_action/stocks</code>. Al deserializar el payload, almacena los favoritos y la sesión de usuario en Room/DataStore del reloj, actualizando instantáneamente la Complicación y el Tile sin dejarlo "Sin favoritos".
+              </p>
               <pre className="p-2.5 rounded-lg bg-[#0A0A0A] border border-[#222226] text-[11px] font-mono text-emerald-400">
                 adb -d forward tcp:5601 tcp:5601
               </pre>
-              <p>
-                Si tienes un smartwatch físico (Galaxy Watch, Pixel Watch), activa <em>Depuración por Wi-Fi</em> en el reloj y conéctalo con:
-              </p>
-              <pre className="p-2.5 rounded-lg bg-[#0A0A0A] border border-[#222226] text-[11px] font-mono text-[#00E5FF]">
-                adb connect 192.168.1.XX:5555
-              </pre>
             </div>
           )}
-        </div>
-
-        {/* Tarjeta Informativa de Integración con el Repositorio de Wear OS */}
-        <div className="rounded-xl bg-gradient-to-br from-[#161618] to-[#121214] border border-[#222226] p-3.5 space-y-2 text-xs text-[#9E9E9E] leading-relaxed">
-          <div className="flex items-center justify-between text-white font-bold">
-            <div className="flex items-center gap-1.5">
-              <Smartphone className="w-4 h-4 text-[#2979FF]" />
-              <span>Conexión con repo Progamaster2308/reloj</span>
-            </div>
-            <a
-              href="https://github.com/Progamaster2308/reloj"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[#00E5FF] hover:underline flex items-center gap-0.5 text-[11px]"
-            >
-              <span>GitHub</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-
-          <p>
-            El reloj inteligente escucha eventos en el canal{' '}
-            <code className="text-[#00E5FF] bg-black/50 px-1 py-0.5 rounded">
-              /mirror_action/stocks
-            </code>{' '}
-            mediante el servicio de fondo <code className="text-white">WearableListenerService</code> en Kotlin. Al recibir el paquete, actualiza la base de datos Room del reloj o los DataStore Preferences sin consumir cuota de red adicional en el smartwatch.
-          </p>
         </div>
       </div>
     </div>

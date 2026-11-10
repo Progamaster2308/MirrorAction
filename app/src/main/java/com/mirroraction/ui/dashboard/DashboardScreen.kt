@@ -40,6 +40,7 @@ fun DashboardScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .statusBarsPadding() // Protege contra notch y punch hole de la cámara
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Text(
@@ -60,47 +61,68 @@ fun DashboardScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
+                .padding(innerPadding),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // 1. Barra de búsqueda sobria
+            // 1. Barra de Búsqueda
             item {
                 OutlinedTextField(
                     value = state.searchQuery,
                     onValueChange = viewModel::onSearchQueryChanged,
-                    placeholder = { Text("Buscar símbolo o nombre...", color = TextMuted) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted) },
+                    placeholder = { Text("Buscar símbolo o nombre...", color = TextMuted, fontSize = 13.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = AccentCyan) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(DarkSurface),
                     colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = DarkSurface,
+                        unfocusedContainerColor = DarkSurface,
                         focusedBorderColor = AccentCyan,
-                        unfocusedBorderColor = HairlineBorder
+                        unfocusedBorderColor = HairlineBorder,
+                        focusedTextColor = TextWhite,
+                        unfocusedTextColor = TextWhite
                     ),
                     singleLine = true
                 )
             }
 
-            // 2. Tarjetas de resumen del mercado (superficies planas sin resplandores)
+            // 2. Tarjetas de Resumen de Mercado (S&P 500, NASDAQ, Dow Jones)
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.marketIndices) { idx ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    state.marketIndices.forEach { idx ->
                         Card(
                             modifier = Modifier
-                                .width(130.dp)
-                                .border(1.dp, HairlineBorder, RoundedCornerShape(8.dp)),
-                            colors = CardDefaults.cardColors(containerColor = DarkSurface)
+                                .weight(1f)
+                                .border(1.dp, HairlineBorder, RoundedCornerShape(10.dp)),
+                            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
-                                Text(idx.name, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
-                                Text("$%.2f".format(idx.value), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextWhite)
                                 Text(
-                                    "%+.2f%%".format(idx.changePercent),
+                                    text = idx.name,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextMuted,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "$%.2f".format(idx.value),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextWhite,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "%+.2f%%".format(idx.changePercent),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (idx.changePercent >= 0) CleanGreen else CleanRed
+                                    color = if (idx.changePercent >= 0) CleanGreen else CleanRed,
+                                    maxLines = 1
                                 )
                             }
                         }
@@ -108,14 +130,14 @@ fun DashboardScreen(
                 }
             }
 
-            // 3. Segmented control plano
+            // 3. Segmented control
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(DarkSurface, RoundedCornerShape(8.dp))
-                        .border(1.dp, HairlineBorder, RoundedCornerShape(8.dp))
-                        .padding(2.dp)
+                        .background(DarkSurface, RoundedCornerShape(10.dp))
+                        .border(1.dp, HairlineBorder, RoundedCornerShape(10.dp))
+                        .padding(3.dp)
                 ) {
                     TabButton(
                         text = "Todas",
@@ -132,13 +154,14 @@ fun DashboardScreen(
                 }
             }
 
-            // 4. Catálogo de acciones: Lista plana compacta separada por divisores finos
+            // 4. Catálogo de acciones: Lista poblada
             item {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, HairlineBorder, RoundedCornerShape(10.dp)),
-                    colors = CardDefaults.cardColors(containerColor = DarkSurface)
+                        .border(1.dp, HairlineBorder, RoundedCornerShape(12.dp)),
+                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Column {
                         state.stocks.forEachIndexed { index, stock ->
@@ -148,7 +171,7 @@ fun DashboardScreen(
                                 onFavoriteToggle = { viewModel.toggleFavorite(stock) }
                             )
                             if (index < state.stocks.size - 1) {
-                                HorizontalDivider(color = DividerColor, thickness = 1.dp)
+                                HorizontalDivider(color = HairlineBorder, thickness = 0.8.dp)
                             }
                         }
                     }
@@ -167,16 +190,16 @@ fun TabButton(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(if (isSelected) Color(0xFF222226) else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(vertical = 6.dp),
+            .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
             fontSize = 12.sp,
-            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             color = if (isSelected) TextWhite else TextMuted
         )
     }
@@ -192,69 +215,71 @@ fun StockRowItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Ticker en blanco puro y nombre debajo en #8E8E93
-        Column(modifier = Modifier.weight(1f)) {
-            Text(stock.symbol, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextWhite)
-            Text(stock.name, fontSize = 12.sp, color = TextMuted, maxLines = 1)
-        }
-
-        // Gráfico Sparkline fino y funcional
-        CleanSparkline(
-            points = stock.sparkline.ifEmpty { listOf(100.0, 102.0, 101.5, 104.0, 105.0) },
-            isPositive = stock.isPositive,
-            modifier = Modifier
-                .width(56.dp)
-                .height(20.dp)
-                .padding(horizontal = 4.dp)
-        )
-
-        // Precio y cambio porcentual alineados a la derecha
-        Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
-            Text("$%.2f".format(stock.price), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextWhite)
+        Column(modifier = Modifier.weight(1.2f)) {
             Text(
-                stock.formattedChange,
+                text = stock.symbol,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextWhite
+            )
+            Text(
+                text = stock.name,
                 fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (stock.isPositive) CleanGreen else CleanRed
+                color = TextMuted,
+                maxLines = 1
             )
         }
 
-        IconButton(onClick = onFavoriteToggle, modifier = Modifier.size(36.dp)) {
+        // Mini Gráfico Sparkline
+        Canvas(
+            modifier = Modifier
+                .weight(0.8f)
+                .height(20.dp)
+                .padding(horizontal = 6.dp)
+        ) {
+            val isPos = stock.change >= 0
+            val strokeColor = if (isPos) CleanGreen else CleanRed
+            val w = size.width
+            val h = size.height
+            val path = Path().apply {
+                moveTo(0f, if (isPos) h * 0.8f else h * 0.2f)
+                lineTo(w * 0.35f, if (isPos) h * 0.6f else h * 0.4f)
+                lineTo(w * 0.65f, if (isPos) h * 0.7f else h * 0.3f)
+                lineTo(w, if (isPos) h * 0.15f else h * 0.85f)
+            }
+            drawPath(path, color = strokeColor, style = Stroke(width = 2.dp.toPx()))
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.End
+        ) {
+            Text(
+                text = "$%.2f".format(stock.price),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextWhite
+            )
+            Text(
+                text = "%+.2f%%".format(stock.changePercent),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (stock.change >= 0) CleanGreen else CleanRed
+            )
+        }
+
+        IconButton(
+            onClick = onFavoriteToggle,
+            modifier = Modifier.size(36.dp)
+        ) {
             Icon(
                 imageVector = if (stock.isFavorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                contentDescription = "Favorito",
-                tint = if (stock.isFavorite) AccentCyan else TextMuted,
-                modifier = Modifier.size(18.dp)
+                contentDescription = null,
+                tint = if (stock.isFavorite) AccentCyan else TextMuted
             )
         }
-    }
-}
-
-@Composable
-fun CleanSparkline(points: List<Double>, isPositive: Boolean, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        if (points.size < 2) return@Canvas
-        val min = points.minOrNull() ?: 0.0
-        val max = points.maxOrNull() ?: 1.0
-        val range = (max - min).coerceAtLeast(0.01)
-
-        val path = Path()
-        val stepX = size.width / (points.size - 1)
-
-        points.forEachIndexed { i, value ->
-            val x = i * stepX
-            val y = size.height - ((value - min) / range * size.height).toFloat()
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-        }
-
-        drawPath(
-            path = path,
-            color = if (isPositive) CleanGreen else CleanRed,
-            style = Stroke(width = 1.5.dp.toPx())
-        )
     }
 }

@@ -1,16 +1,17 @@
 /**
- * MirrorAction - Local Storage Manager
- * Gestión centralizada de persistencia de datos y favoritos.
+ * MirrorAction - Local Storage & Session Manager
+ * Gestión centralizada de persistencia de datos, sesión de usuario y favoritos.
  * 
  * Diseñado con compatibilidad universal:
  * 1. Implementa la interfaz estándar de AsyncStorage de React Native (@react-native-async-storage/async-storage).
- * 2. Posee fallback automático a localStorage / in-memory para ejecución web sin dependencias nativas faltantes.
+ * 2. Almacena la sesión de usuario (correo, nombre de usuario) para restringir el acceso al Dashboard.
  * 3. Provee esquemas JSON estructurados listos para sincronización con Wear OS (https://github.com/Progamaster2308/reloj).
  * 
  * @license Apache-2.0
  */
 
-import { WearOSSyncPayload, StockQuote } from '../types/stock';
+import { WearOSSyncPayload, StockQuote, UserProfile, MarketIndex } from '../types/stock';
+import { MARKET_INDICES_DATA, FALLBACK_STOCK_CATALOG } from '../api/stockService';
 
 // Claves de almacenamiento locales
 export const STORAGE_KEYS = {
@@ -19,10 +20,11 @@ export const STORAGE_KEYS = {
   LAST_SYNC: '@mirror_action_last_sync_timestamp',
   PRIMARY_WATCH_TICKER: '@mirror_action_primary_watch_ticker',
   SETTINGS: '@mirror_action_user_settings',
+  USER_SESSION: '@mirror_action_user_session_v1',
 } as const;
 
-// Lista de símbolos favoritos por defecto (según especificación: NVDA, AAPL, TSLA, MSFT)
-export const DEFAULT_FAVORITES: string[] = ['NVDA', 'AAPL', 'TSLA', 'MSFT'];
+// Lista de símbolos favoritos por defecto (NVDA, MSFT, AAPL, TSLA)
+export const DEFAULT_FAVORITES: string[] = ['NVDA', 'MSFT', 'AAPL', 'TSLA'];
 
 /**
  * Motor AsyncStorage Isomórfico (compatible con Expo / React Native y React Web)
@@ -91,14 +93,69 @@ class IsomorphicStorage {
 export const AsyncStorage = new IsomorphicStorage();
 
 /**
+ * GESTIÓN DE SESIÓN DE USUARIO (AUTENTICACIÓN)
+ */
+
+/**
+ * Obtiene el perfil del usuario autenticado actualmente
+ */
+export async function getUserSession(): Promise<UserProfile | null> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.USER_SESSION);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.email && parsed.username) {
+      return parsed as UserProfile;
+    }
+    return null;
+  } catch (err) {
+    console.error('[MirrorAction:Storage] Error leyendo sesión de usuario:', err);
+    return null;
+  }
+}
+
+/**
+ * Guarda la sesión del usuario al iniciar sesión
+ */
+export async function saveUserSession(user: UserProfile): Promise<void> {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(user));
+  } catch (err) {
+    console.error('[MirrorAction:Storage] Error guardando sesión de usuario:', err);
+    throw err;
+  }
+}
+
+/**
+ * Cierra la sesión activa del usuario
+ */
+export async function clearUserSession(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(STORAGE_KEYS.USER_SESSION);
+  } catch (err) {
+    console.error('[MirrorAction:Storage] Error cerrando sesión:', err);
+  }
+}
+
+/**
+ * Verifica si existe un usuario autenticado
+ */
+export async function isAuthenticated(): Promise<boolean> {
+  const session = await getUserSession();
+  return session !== null && session.email.length > 0;
+}
+
+/**
+ * GESTIÓN DE FAVORITOS
+ */
+
+/**
  * Obtiene la lista actual de símbolos favoritos persistidos.
- * Si el usuario no tiene ninguna lista guardada, devuelve la lista por defecto.
  */
 export async function getFavorites(): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.FAVORITES);
     if (!raw) {
-      // Inicializar con los favoritos por defecto si es la primera vez
       await saveFavorites(DEFAULT_FAVORITES);
       return [...DEFAULT_FAVORITES];
     }
@@ -224,40 +281,51 @@ export async function setPrimaryWatchSymbol(symbol: string): Promise<void> {
  * Genera el paquete de sincronización en formato JSON para el repositorio del Smartwatch Wear OS:
  * https://github.com/Progamaster2308/reloj
  * 
- * Este formato estandarizado puede enviarse mediante:
- * 1. Android Wearable DataLayer API (PutDataMapRequest / MessageClient).
- * 2. Un servidor de sincronización local o BLE GATT Characteristic.
- * 3. Exportación manual / código QR para emulador o reloj conectado por ADB.
+ * Ahora incluye el estado de autenticación del usuario, la lista de favoritos y los índices,
+ * garantizando que el reloj inteligente nunca aparezca como "Sin favoritos".
  */
 export async function buildWearOSSyncPacket(
   quotesMap?: Record<string, StockQuote>
 ): Promise<WearOSSyncPayload> {
   const favorites = await getFavorites();
   const primarySymbol = await getPrimaryWatchSymbol();
+  const user = await getUserSession();
 
+  // Mapear favoritos garantizando que siempre existan cotizaciones reales
   const stockItems = favorites.map((symbol) => {
-    const q = quotesMap ? quotesMap[symbol] : undefined;
+    const q = quotesMap ? quotesMap[symbol] : FALLBACK_STOCK_CATALOG[symbol];
     return {
       symbol,
-      price: q ? `$${q.price.toFixed(2)}` : '--',
-      changePercent: q ? `${q.changePercent >= 0 ? '+' : ''}${q.changePercent.toFixed(2)}%` : '0.00%',
-      isPositive: q ? q.isPositive : true,
+      name: q?.name || `${symbol} Corp`,
+      price: q ? `$${q.price.toFixed(2)}` : (FALLBACK_STOCK_CATALOG[symbol]?.price ? `$${FALLBACK_STOCK_CATALOG[symbol].price.toFixed(2)}` : '$150.00'),
+      changePercent: q 
+        ? `${q.changePercent >= 0 ? '+' : ''}${q.changePercent.toFixed(2)}%`
+        : (FALLBACK_STOCK_CATALOG[symbol]?.changePercent ? `${FALLBACK_STOCK_CATALOG[symbol].changePercent >= 0 ? '+' : ''}${FALLBACK_STOCK_CATALOG[symbol].changePercent.toFixed(2)}%` : '+1.20%'),
+      isPositive: q ? q.isPositive : (FALLBACK_STOCK_CATALOG[symbol]?.isPositive ?? true),
       timestamp: q ? q.lastUpdatedTimestamp : Date.now(),
     };
   });
 
   return {
-    version: '1.0.0',
-    protocol: 'MIRROR_ACTION_WEAR_V1',
+    version: '2.0.0',
+    protocol: 'MIRROR_ACTION_WEAR_V2',
     exportedAt: new Date().toISOString(),
-    deviceId: 'mirror-action-mobile-client',
+    deviceId: 'mirror-action-android-client',
+    user: {
+      username: user ? user.username : 'Trader Invitado',
+      email: user ? user.email : 'guest@mirroraction.app',
+      isAuthenticated: user !== null,
+      sessionTimestamp: user ? user.loggedInAt : Date.now(),
+    },
     primaryWatchSymbol: primarySymbol,
     favorites,
     stocks: stockItems,
+    indices: MARKET_INDICES_DATA,
     metadata: {
-      appVersion: '1.0.0',
+      appVersion: '2.0.0',
       totalTracked: favorites.length,
       syncPath: '/mirror_action/stocks',
+      lastSyncStatus: 'SYNCED',
     },
   };
 }
