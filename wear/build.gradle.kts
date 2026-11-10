@@ -41,6 +41,9 @@ dependencies {
 
     // Compose for Wear OS
     implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.ui)
+    implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.wear.compose.material)
     implementation(libs.androidx.wear.compose.foundation)
     implementation(libs.androidx.wear.compose.navigation)
