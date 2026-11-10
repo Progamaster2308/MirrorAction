@@ -263,8 +263,8 @@ fun LoginScreen(
                 ) {
                     OutlinedButton(
                         onClick = {
-                            username = "Brian De Jesús"
-                            email = "briandejesuselpro@gmail.com"
+                            username = "Alex Trader"
+                            email = "alex.trader@mirroraction.app"
                             usernameError = null
                             emailError = null
                         },
@@ -276,7 +276,7 @@ fun LoginScreen(
                         ),
                         border = borderStroke(1.dp, HairlineBorder)
                     ) {
-                        Text("👤 Brian De Jesús", fontSize = 11.sp, maxLines = 1)
+                        Text("👤 Alex Trader", fontSize = 11.sp, maxLines = 1)
                     }
 
                     OutlinedButton(

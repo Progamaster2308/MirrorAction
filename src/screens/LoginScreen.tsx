@@ -217,10 +217,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => handleQuickDemo('BrianDeJesus', 'briandejesuselpro@gmail.com')}
+                onClick={() => handleQuickDemo('AlexTrader', 'alex.trader@mirroraction.app')}
                 className="flex-1 py-1.5 px-2 rounded-lg bg-[#0A0A0A] border border-[#222226] hover:border-[#00E5FF]/40 text-[11px] text-[#9E9E9E] hover:text-white transition-all text-left truncate"
               >
-                👤 Brian De Jesús
+                👤 Alex Trader
               </button>
               <button
                 type="button"
