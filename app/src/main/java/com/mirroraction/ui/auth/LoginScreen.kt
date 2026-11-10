@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mirroraction.ui.theme.*
 
+private val AccentBlue = Color(0xFF2979FF)
+
 @Composable
 fun LoginScreen(
     onLoginSuccess: (username: String, email: String) -> Unit
