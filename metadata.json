@@ -1,0 +1,6 @@
+{
+  "name": "MirrorAction",
+  "description": "Aplicación móvil ultra-responsiva de seguimiento bursátil con integración a Alpha Vantage, modo oscuro, favoritos persistentes y sincronización con smartwatch Wear OS.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
